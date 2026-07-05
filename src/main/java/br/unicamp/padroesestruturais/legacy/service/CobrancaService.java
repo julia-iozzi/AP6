@@ -3,6 +3,12 @@ package br.unicamp.padroesestruturais.legacy.service;
 import br.unicamp.padroesestruturais.legacy.domain.FormaPagamento;
 import br.unicamp.padroesestruturais.legacy.domain.Pedido;
 import br.unicamp.padroesestruturais.legacy.domain.ResultadoCobranca;
+import br.unicamp.padroesestruturais.legacy.domain.ajuste.AjusteValor;
+import br.unicamp.padroesestruturais.legacy.domain.ajuste.AjustesValor;
+import br.unicamp.padroesestruturais.legacy.domain.ajuste.DescontoFidelidadeAjuste;
+import br.unicamp.padroesestruturais.legacy.domain.ajuste.JurosParcelamentoAjuste;
+import br.unicamp.padroesestruturais.legacy.domain.ajuste.SeguroAjuste;
+import br.unicamp.padroesestruturais.legacy.domain.ajuste.TaxaInternacionalAjuste;
 import br.unicamp.padroesestruturais.legacy.gateway.GatewayInternoAdapter;
 import br.unicamp.padroesestruturais.legacy.gateway.GatewayPagamento;
 import br.unicamp.padroesestruturais.legacy.gateway.PaySecureAdapter;
@@ -13,24 +19,32 @@ import java.util.List;
 
 public class CobrancaService {
 
-    private static final double TAXA_DESCONTO_FIDELIDADE = 0.05;
-    private static final double TAXA_JUROS_PARCELAMENTO = 0.0299;
-    private static final double TAXA_OPERACAO_INTERNACIONAL = 0.05;
-    private static final double VALOR_SEGURO = 4.90;
-
     public ResultadoCobranca cobrar(Pedido pedido, FormaPagamento forma,
                                     boolean aplicarDescontoFidelidade,
                                     boolean aplicarJurosParcelamento,
                                     boolean aplicarTaxaInternacional,
                                     boolean aplicarSeguro) {
 
-        double valorFinal = calcularValorFinal(
-                pedido.getValorBase(),
+        AjustesValor ajustes = criarAjustes(
                 aplicarDescontoFidelidade,
                 aplicarJurosParcelamento,
                 aplicarTaxaInternacional,
                 aplicarSeguro
         );
+
+        double valorFinal = calcularValorFinal(pedido.getValorBase(), ajustes);
+
+        GatewayPagamento gateway = obterGateway(forma);
+
+        return gateway.cobrar(
+                pedido,
+                valorFinal,
+                forma
+        );
+    }
+
+    public ResultadoCobranca cobrar(Pedido pedido, FormaPagamento forma, AjusteValor... ajustes) {
+        double valorFinal = calcularValorFinal(pedido.getValorBase(), ajustes);
 
         GatewayPagamento gateway = obterGateway(forma);
 
@@ -52,15 +66,16 @@ public class CobrancaService {
 
         GatewayPagamento gateway = obterGateway(forma);
 
+        AjustesValor ajustes = criarAjustes(
+                aplicarDescontoFidelidade,
+                aplicarJurosParcelamento,
+                aplicarTaxaInternacional,
+                aplicarSeguro
+        );
+
         for (Pedido pedido : pedidos) {
 
-            double valorFinal = calcularValorFinal(
-                    pedido.getValorBase(),
-                    aplicarDescontoFidelidade,
-                    aplicarJurosParcelamento,
-                    aplicarTaxaInternacional,
-                    aplicarSeguro
-            );
+            double valorFinal = calcularValorFinal(pedido.getValorBase(), ajustes);
 
             resultados.add(
                     gateway.cobrar(pedido, valorFinal, forma)
@@ -95,30 +110,65 @@ public class CobrancaService {
         }
     }
 
+    public List<ResultadoCobranca> cobrarEmLote(List<Pedido> pedidos,
+                                                FormaPagamento forma,
+                                                AjusteValor... ajustes) {
+
+        List<ResultadoCobranca> resultados = new ArrayList<>();
+
+        GatewayPagamento gateway = obterGateway(forma);
+
+        for (Pedido pedido : pedidos) {
+            double valorFinal = calcularValorFinal(pedido.getValorBase(), ajustes);
+            resultados.add(gateway.cobrar(pedido, valorFinal, forma));
+        }
+
+        return resultados;
+    }
+
     public double calcularValorFinal(double valorBase,
                                      boolean aplicarDescontoFidelidade,
                                      boolean aplicarJurosParcelamento,
                                      boolean aplicarTaxaInternacional,
                                      boolean aplicarSeguro) {
+        return calcularValorFinal(valorBase, criarAjustes(
+                aplicarDescontoFidelidade,
+                aplicarJurosParcelamento,
+                aplicarTaxaInternacional,
+                aplicarSeguro
+        ));
+    }
 
-        double valor = valorBase;
+    public double calcularValorFinal(double valorBase, AjusteValor... ajustes) {
+        return new AjustesValor(ajustes).aplicar(valorBase);
+    }
+
+    public double calcularValorFinal(double valorBase, AjustesValor ajustes) {
+        return ajustes.aplicar(valorBase);
+    }
+
+    private AjustesValor criarAjustes(boolean aplicarDescontoFidelidade,
+                                      boolean aplicarJurosParcelamento,
+                                      boolean aplicarTaxaInternacional,
+                                      boolean aplicarSeguro) {
+        List<AjusteValor> ajustes = new ArrayList<>();
 
         if (aplicarDescontoFidelidade) {
-            valor -= valor * TAXA_DESCONTO_FIDELIDADE;
+            ajustes.add(new DescontoFidelidadeAjuste());
         }
 
         if (aplicarJurosParcelamento) {
-            valor += valor * TAXA_JUROS_PARCELAMENTO;
+            ajustes.add(new JurosParcelamentoAjuste());
         }
 
         if (aplicarTaxaInternacional) {
-            valor += valor * TAXA_OPERACAO_INTERNACIONAL;
+            ajustes.add(new TaxaInternacionalAjuste());
         }
 
         if (aplicarSeguro) {
-            valor += VALOR_SEGURO;
+            ajustes.add(new SeguroAjuste());
         }
 
-        return valor;
+        return new AjustesValor(ajustes.toArray(new AjusteValor[0]));
     }
 }

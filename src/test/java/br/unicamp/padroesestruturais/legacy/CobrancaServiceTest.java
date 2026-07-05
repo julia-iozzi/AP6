@@ -3,6 +3,10 @@ package br.unicamp.padroesestruturais.legacy;
 import br.unicamp.padroesestruturais.legacy.domain.FormaPagamento;
 import br.unicamp.padroesestruturais.legacy.domain.Pedido;
 import br.unicamp.padroesestruturais.legacy.domain.ResultadoCobranca;
+import br.unicamp.padroesestruturais.legacy.domain.ajuste.AjusteValor;
+import br.unicamp.padroesestruturais.legacy.domain.ajuste.AjustesValor;
+import br.unicamp.padroesestruturais.legacy.domain.ajuste.AntecipacaoRecebiveisAjuste;
+import br.unicamp.padroesestruturais.legacy.domain.ajuste.TaxaEmissaoNotaFiscalAjuste;
 import br.unicamp.padroesestruturais.legacy.service.CobrancaService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -105,6 +109,77 @@ class CobrancaServiceTest {
         esperado = esperado + 4.90;
 
         assertEquals(esperado, valor, 0.001);
+    }
+
+    @Test
+    void deveAplicarAjustesPorObjetosEmQualquerOrdem() {
+        AjusteValor[] ajustes = {
+                new AntecipacaoRecebiveisAjuste(),
+                new TaxaEmissaoNotaFiscalAjuste()
+        };
+
+        double valor = service.calcularValorFinal(1000.0, ajustes);
+
+        assertEquals(1017.5, valor, 0.001);
+    }
+
+    @Test
+    void deveCombinarAjustesCompostoEmOrdemInformada() {
+        AjustesValor ajustes = new AjustesValor(new AjusteValor[]{
+                new TaxaEmissaoNotaFiscalAjuste(),
+                new AntecipacaoRecebiveisAjuste()
+        });
+
+        double valor = service.calcularValorFinal(1000.0, ajustes);
+
+        assertEquals(1017.5375, valor, 0.001);
+    }
+
+    @Test
+    void deveAplicarTaxaDeAntecipacaoDeRecebiveis() {
+        double valor = service.calcularValorFinal(1000.0, new AntecipacaoRecebiveisAjuste());
+
+        assertEquals(1015.0, valor, 0.001);
+    }
+
+    @Test
+    void deveAplicarTaxaDeEmissaoDeNotaFiscal() {
+        double valor = service.calcularValorFinal(1000.0, new TaxaEmissaoNotaFiscalAjuste());
+
+        assertEquals(1002.5, valor, 0.001);
+    }
+
+    @Test
+    void deveComporMultiplosAjustesEmCombinaçõesDistintas() {
+        double valorComOrdemUm = service.calcularValorFinal(
+                1000.0,
+                new TaxaEmissaoNotaFiscalAjuste(),
+                new AntecipacaoRecebiveisAjuste(),
+                new TaxaEmissaoNotaFiscalAjuste()
+        );
+
+        double valorComOrdemDois = service.calcularValorFinal(
+                1000.0,
+                new AntecipacaoRecebiveisAjuste(),
+                new TaxaEmissaoNotaFiscalAjuste(),
+                new AntecipacaoRecebiveisAjuste()
+        );
+
+        assertEquals(1020.0375, valorComOrdemUm, 0.001);
+        assertEquals(1032.7625, valorComOrdemDois, 0.001);
+    }
+
+    @Test
+    void deveCobrarComDecoratorsNoFluxoPrincipal() {
+        ResultadoCobranca resultado = service.cobrar(
+                pedido,
+                FormaPagamento.BOLETO,
+                new AntecipacaoRecebiveisAjuste(),
+                new TaxaEmissaoNotaFiscalAjuste()
+        );
+
+        assertEquals("APROVADA", resultado.getStatus());
+        assertEquals(1017.5, resultado.getValorCobrado(), 0.001);
     }
 
     @Test

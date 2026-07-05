@@ -1,0 +1,13 @@
+package br.unicamp.padroesestruturais.legacy.gateway;
+
+import br.unicamp.padroesestruturais.legacy.domain.FormaPagamento;
+import br.unicamp.padroesestruturais.legacy.domain.Pedido;
+import br.unicamp.padroesestruturais.legacy.domain.ResultadoCobranca;
+
+public interface GatewayPagamento {
+
+    ResultadoCobranca cobrar(Pedido pedido,
+                             double valor,
+                             FormaPagamento forma);
+
+}
